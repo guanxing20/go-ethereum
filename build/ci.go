@@ -124,6 +124,7 @@ var (
 		"jammy",    // 22.04, EOL: 04/2032
 		"noble",    // 24.04, EOL: 04/2034
 		"oracular", // 24.10, EOL: 07/2025
+		"plucky",   // 25.04, EOL: 01/2026
 	}
 
 	// This is where the tests should be unpacked.
@@ -321,9 +322,9 @@ func doTest(cmdline []string) {
 		gotest.Args = append(gotest.Args, "-short")
 	}
 
-	packages := []string{"./..."}
-	if len(flag.CommandLine.Args()) > 0 {
-		packages = flag.CommandLine.Args()
+	packages := flag.CommandLine.Args()
+	if len(packages) == 0 {
+		packages = workspacePackagePatterns()
 	}
 	gotest.Args = append(gotest.Args, packages...)
 	build.MustRun(gotest)
@@ -332,7 +333,7 @@ func doTest(cmdline []string) {
 // downloadSpecTestFixtures downloads and extracts the execution-spec-tests fixtures.
 func downloadSpecTestFixtures(csdb *download.ChecksumDB, cachedir string) string {
 	ext := ".tar.gz"
-	base := "fixtures_fusaka-devnet-3"
+	base := "fixtures_develop"
 	archivePath := filepath.Join(cachedir, base+ext)
 	if err := csdb.DownloadFileFromKnownURL(archivePath); err != nil {
 		log.Fatal(err)
@@ -341,10 +342,6 @@ func downloadSpecTestFixtures(csdb *download.ChecksumDB, cachedir string) string
 		log.Fatal(err)
 	}
 	return filepath.Join(cachedir, base)
-}
-
-// doCheckTidy assets that the Go modules files are tidied already.
-func doCheckTidy() {
 }
 
 // doCheckGenerate ensures that re-generating generated files does not cause
@@ -367,7 +364,7 @@ func doCheckGenerate() {
 		protocPath      = downloadProtoc(*cachedir)
 		protocGenGoPath = downloadProtocGenGo(*cachedir)
 	)
-	c := tc.Go("generate", "./...")
+	c := tc.Go("generate", workspacePackagePatterns()...)
 	pathList := []string{filepath.Join(protocPath, "bin"), protocGenGoPath, os.Getenv("PATH")}
 	c.Env = append(c.Env, "PATH="+strings.Join(pathList, string(os.PathListSeparator)))
 	build.MustRun(c)
@@ -427,9 +424,16 @@ func doLint(cmdline []string) {
 		cachedir = flag.String("cachedir", "./build/cache", "directory for caching golangci-lint binary.")
 	)
 	flag.CommandLine.Parse(cmdline)
-	packages := []string{"./..."}
-	if len(flag.CommandLine.Args()) > 0 {
-		packages = flag.CommandLine.Args()
+
+	packages := flag.CommandLine.Args()
+	if len(packages) == 0 {
+		// Get module directories in workspace.
+		packages = []string{"./..."}
+		modules := workspaceModules()
+		for _, m := range modules[1:] {
+			dir := strings.TrimPrefix(m, modules[0])
+			packages = append(packages, "."+dir+"/...")
+		}
 	}
 
 	linter := downloadLinter(*cachedir)
@@ -1171,4 +1175,32 @@ func doPurge(cmdline []string) {
 func doSanityCheck() {
 	csdb := download.MustLoadChecksums("build/checksums.txt")
 	csdb.DownloadAndVerifyAll()
+}
+
+// workspaceModules lists the module paths in the current work.
+func workspaceModules() []string {
+	listing, err := new(build.GoToolchain).Go("list", "-m").Output()
+	if err != nil {
+		log.Fatalf("go list failed:", err)
+	}
+	var modules []string
+	for _, m := range bytes.Split(listing, []byte("\n")) {
+		m = bytes.TrimSpace(m)
+		if len(m) > 0 {
+			modules = append(modules, string(m))
+		}
+	}
+	if len(modules) == 0 {
+		panic("no modules found")
+	}
+	return modules
+}
+
+func workspacePackagePatterns() []string {
+	modules := workspaceModules()
+	patterns := make([]string, len(modules))
+	for i, m := range modules {
+		patterns[i] = m + "/..."
+	}
+	return patterns
 }
