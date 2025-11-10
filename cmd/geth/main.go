@@ -63,7 +63,10 @@ var (
 		utils.USBFlag,
 		utils.SmartCardDaemonPathFlag,
 		utils.OverrideOsaka,
+		utils.OverrideBPO1,
+		utils.OverrideBPO2,
 		utils.OverrideVerkle,
+		utils.OverrideGenesisFlag,
 		utils.EnablePersonal, // deprecated
 		utils.TxPoolLocalsFlag,
 		utils.TxPoolNoLocalsFlag,
@@ -186,6 +189,8 @@ var (
 		utils.AllowUnprotectedTxs,
 		utils.BatchRequestLimit,
 		utils.BatchResponseMaxSize,
+		utils.RPCTxSyncDefaultTimeoutFlag,
+		utils.RPCTxSyncMaxTimeoutFlag,
 	}
 
 	metricsFlags = []cli.Flag{
